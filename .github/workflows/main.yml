@@ -5,15 +5,55 @@ on: [pull_request, push, workflow_dispatch]
 jobs:
   molecule:
     runs-on: ubuntu-18.04
+    strategy:
+      fail-fast: true
+      matrix:
+        python-version: ["3.8"]
     steps:
+
       - name: Checkout
         uses: actions/checkout@v2
         with:
           path: "${{ github.repository }}"
-      - name: Ansible Molecule
-        uses: gofrolist/molecule-action@v2.3.5
+       
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
         with:
-          molecule_command: test
-          molecule_working_dir: "${GITHUB_REPOSITORY}/db"
-            
-         
+          python-version: ${{ matrix.python-version }}
+      - name: Install vagrant
+        run: |
+          wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+          sudo apt update && sudo apt install vagrant
+
+      - name: Install virtualbox
+        run: |
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/oracle-virtualbox-2016.gpg] https://download.virtualbox.org/virtualbox/debian bionic contrib" | sudo tee -a /etc/apt/sources.list.d/virtualbox.list
+          wget -O- https://www.virtualbox.org/download/oracle_vbox_2016.asc | sudo gpg --dearmor --yes --output /usr/share/keyrings/oracle-virtualbox-2016.gpg
+          sudo apt update
+          sudo apt install virtualbox-6.1
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r ${{ github.workspace }}/Durf1985/ansible-db/requirements.txt
+     
+      - name: Test with molecule
+        run: |
+          cd ${{ github.workspace }}/Durf1985/ansible-db/db
+          molecule test 
+      # - name: Molecule
+      #   uses: gofrolist/molecule-action@v2
+      #   with:
+      #     molecule_command: test
+      #     molecule_args: -d delegated
+      #     molecule_working_dir: ${{ github.workspace }}/Durf1985/ansible-db/db
+# установить вагрант, установить virtualbox стащить нужный образ, проверить history
+    
+      - name: Slack Notification
+        if: always()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_TITLE: ${{ env.SLACK_TITLE }}
+          SLACK_COLOR: ${{ job.status }}
